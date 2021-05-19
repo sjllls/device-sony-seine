@@ -45,41 +45,49 @@ on charger
     # Enable thermal
     write /sys/module/msm_thermal/core_control/enabled 1
 
+on early-init
+    # Enable sched_boost
+    write /proc/sys/kernel/sched_boost 1
+
+on init
+    # Bring all cores online
+    write /sys/devices/system/cpu/cpu0/online 1
+    write /sys/devices/system/cpu/cpu1/online 1
+    write /sys/devices/system/cpu/cpu2/online 1
+    write /sys/devices/system/cpu/cpu3/online 1
+    write /sys/devices/system/cpu/cpu4/online 1
+    write /sys/devices/system/cpu/cpu5/online 1
+    write /sys/devices/system/cpu/cpu6/online 1
+    write /sys/devices/system/cpu/cpu7/online 1
+
+    # Disable thermal
+    write /sys/module/msm_thermal/core_control/enabled 0
+
+    # Configure governor settings for little cluster
+    write /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor "schedutil"
+    write /sys/devices/system/cpu/cpu0/cpufreq/schedutil/up_rate_limit_us 500
+    write /sys/devices/system/cpu/cpu0/cpufreq/schedutil/down_rate_limit_us 20000
+
+    # Configure governor settings for big cluster
+    write /sys/devices/system/cpu/cpu4/cpufreq/scaling_governor "schedutil"
+    write /sys/devices/system/cpu/cpu4/cpufreq/schedutil/up_rate_limit_us 500
+    write /sys/devices/system/cpu/cpu4/cpufreq/schedutil/down_rate_limit_us 20000
+
+    # Set default schedTune value for foreground/top-app
+    write /dev/stune/foreground/schedtune.prefer_idle 1
+    write /dev/stune/top-app/schedtune.boost 10
+    write /dev/stune/top-app/schedtune.prefer_idle 1
+
+on post-fs
+    # Disable sched autogroup
+    write /proc/sys/kernel/sched_autogroup_enabled 0
+
 on boot
     # Setting b.L scheduler parameters
     write /proc/sys/kernel/sched_downmigrate 67
     write /proc/sys/kernel/sched_upmigrate 77
     write /proc/sys/kernel/sched_group_downmigrate 85
     write /proc/sys/kernel/sched_group_upmigrate 100
-
-    # sched_load_boost as -6 is equivalent to target load as 85. It is per cpu tunable.
-    write /sys/devices/system/cpu/cpu0/sched_load_boost -6
-    write /sys/devices/system/cpu/cpu1/sched_load_boost -6
-    write /sys/devices/system/cpu/cpu2/sched_load_boost -6
-    write /sys/devices/system/cpu/cpu3/sched_load_boost -6
-    write /sys/devices/system/cpu/cpu4/sched_load_boost -6
-    write /sys/devices/system/cpu/cpu5/sched_load_boost -6
-    write /sys/devices/system/cpu/cpu6/sched_load_boost -6
-    write /sys/devices/system/cpu/cpu7/sched_load_boost -6
-    write /sys/devices/system/cpu/cpu0/cpufreq/schedutil/hispeed_load 85
-    write /sys/devices/system/cpu/cpu4/cpufreq/schedutil/hispeed_load 85
-
-    # Disable thermal
-    write /sys/module/msm_thermal/core_control/enabled 0
-
-    # configure governor settings for little cluster
-    write /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor "schedutil"
-    write /sys/devices/system/cpu/cpu0/cpufreq/schedutil/up_rate_limit_us 0
-    write /sys/devices/system/cpu/cpu0/cpufreq/schedutil/down_rate_limit_us 0
-    write /sys/devices/system/cpu/cpu0/cpufreq/schedutil/hispeed_freq 1305600
-    write /sys/devices/system/cpu/cpu0/cpufreq/scaling_min_freq 614400
-
-    # configure governor settings for big cluster
-    write /sys/devices/system/cpu/cpu4/cpufreq/scaling_governor "schedutil"
-    write /sys/devices/system/cpu/cpu0/cpufreq/schedutil/up_rate_limit_us 0
-    write /sys/devices/system/cpu/cpu0/cpufreq/schedutil/down_rate_limit_us 0
-    write /sys/devices/system/cpu/cpu4/cpufreq/schedutil/hispeed_freq 1401600
-    write /sys/devices/system/cpu/cpu4/cpufreq/scaling_min_freq 1056000
 
     # re-enable thermal
     write /sys/module/msm_thermal/core_control/enabled 1
@@ -95,6 +103,13 @@ on boot
 
     # enable LPM
     write /sys/module/lpm_levels/parameters/sleep_disabled 0
+
+    # Disable sched_boost
+    write /proc/sys/kernel/sched_boost 0
+
+    # Enable idle state listener
+    write /sys/class/drm/card0/device/idle_encoder_mask 1
+    write /sys/class/drm/card0/device/idle_timeout_ms 100
 
     # Enable Low power modes
     write /sys/module/lpm_levels/system/perf/cpu0/ret/idle_enabled N
@@ -135,3 +150,19 @@ on boot
 
     write /sys/class/devfreq/soc:qcom,cpu4-cpu-ddr-latfloor/governor "compute"
     write /sys/class/devfreq/soc:qcom,cpu4-cpu-ddr-latfloor/polling_interval 10
+
+    # Disable console_suspend to get better logging for kernel crashes
+    write /sys/module/printk/parameters/console_suspend N
+
+on enable-low-power
+    # Enable PowerHAL hint processing
+    setprop vendor.powerhal.init 1
+
+    start vendor.per_proxy
+
+on property:sys.boot_completed=1
+    trigger enable-low-power
+
+# If UART is on, enable console_suspend on boot_complete to save power
+on property:sys.boot_completed=1 && property:init.svc.console=running
+    write /sys/module/printk/parameters/console_suspend Y
